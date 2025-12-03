@@ -85,8 +85,18 @@ function withShareHandling(config) {
       return mod;
     }
 
-    // Add import for Intent
     let newContents = contents;
+
+    // Add import for Intent if not present
+    if (!contents.includes("import android.content.Intent")) {
+      const packageMatch = newContents.match(/(package [^\n]+\n)/);
+      if (packageMatch) {
+        newContents = newContents.replace(
+          packageMatch[0],
+          `${packageMatch[0]}import android.content.Intent\n`
+        );
+      }
+    }
 
     // Add getIntent handling in onCreate if not present
     if (!contents.includes("getIntent()?.let { handleShareIntent(it) }")) {

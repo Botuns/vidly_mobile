@@ -1,5 +1,4 @@
 const {
-  withXcodeProject,
   withEntitlementsPlist,
   withInfoPlist,
   withDangerousMod,
@@ -10,11 +9,26 @@ const path = require("path");
 const SHARE_EXTENSION_NAME = "VidlyShareExtension";
 const APP_GROUP_IDENTIFIER = "group.com.vidly.app";
 
+/**
+ * Expo config plugin for iOS Share Extension
+ *
+ * This plugin:
+ * 1. Adds App Groups entitlement to main app
+ * 2. Adds URL scheme for deep linking
+ * 3. Creates Share Extension files (Swift, Info.plist, entitlements)
+ *
+ * NOTE: After running `npx expo prebuild`, you need to manually add the
+ * Share Extension target in Xcode:
+ * 1. Open ios/Vidly.xcworkspace in Xcode
+ * 2. File > New > Target > Share Extension
+ * 3. Name it "VidlyShareExtension"
+ * 4. Replace generated files with those in ios/VidlyShareExtension/
+ * 5. Add App Groups capability and select "group.com.vidly.app"
+ */
 function withShareExtension(config) {
   config = withAppGroupEntitlements(config);
-  config = withShareExtensionTarget(config);
-  config = withShareExtensionFiles(config);
   config = withShareExtensionInfoPlist(config);
+  config = withShareExtensionFiles(config);
   return config;
 }
 
@@ -27,81 +41,23 @@ function withAppGroupEntitlements(config) {
   });
 }
 
-function withShareExtensionTarget(config) {
-  return withXcodeProject(config, async (mod) => {
-    const xcodeProject = mod.modResults;
-    const targetName = SHARE_EXTENSION_NAME;
-    const bundleId = `${config.ios?.bundleIdentifier}.share-extension`;
-    const groupName = targetName;
-
-    // Check if target already exists
-    if (xcodeProject.pbxTargetByName(targetName)) {
-      return mod;
+function withShareExtensionInfoPlist(config) {
+  return withInfoPlist(config, (mod) => {
+    // Add URL types for deep linking from share extension
+    if (!mod.modResults.CFBundleURLTypes) {
+      mod.modResults.CFBundleURLTypes = [];
     }
 
-    // Create PBXNativeTarget
-    const target = xcodeProject.addTarget(
-      targetName,
-      "app_extension",
-      targetName,
-      bundleId
+    const existingScheme = mod.modResults.CFBundleURLTypes.find((type) =>
+      type.CFBundleURLSchemes?.includes("vidly")
     );
 
-    // Add build configurations
-    const configurations = xcodeProject.pbxXCBuildConfigurationSection();
-    for (const key in configurations) {
-      if (
-        typeof configurations[key] === "object" &&
-        configurations[key].name &&
-        configurations[key].buildSettings?.PRODUCT_NAME === `"${targetName}"`
-      ) {
-        configurations[key].buildSettings = {
-          ...configurations[key].buildSettings,
-          CLANG_ENABLE_MODULES: "YES",
-          CODE_SIGN_STYLE: "Automatic",
-          CURRENT_PROJECT_VERSION: "1",
-          GENERATE_INFOPLIST_FILE: "YES",
-          INFOPLIST_FILE: `${targetName}/Info.plist`,
-          INFOPLIST_KEY_CFBundleDisplayName: "Vidly",
-          INFOPLIST_KEY_NSHumanReadableCopyright: "",
-          IPHONEOS_DEPLOYMENT_TARGET: "15.1",
-          LD_RUNPATH_SEARCH_PATHS: [
-            "$(inherited)",
-            "@executable_path/Frameworks",
-            "@executable_path/../../Frameworks",
-          ],
-          MARKETING_VERSION: "1.0",
-          PRODUCT_BUNDLE_IDENTIFIER: bundleId,
-          PRODUCT_NAME: "$(TARGET_NAME)",
-          SKIP_INSTALL: "YES",
-          SWIFT_EMIT_LOC_STRINGS: "YES",
-          SWIFT_VERSION: "5.0",
-          TARGETED_DEVICE_FAMILY: '"1,2"',
-        };
-      }
+    if (!existingScheme) {
+      mod.modResults.CFBundleURLTypes.push({
+        CFBundleURLSchemes: ["vidly"],
+        CFBundleURLName: config.ios?.bundleIdentifier || "com.vidly.app",
+      });
     }
-
-    // Add source files to the target
-    const groupKey = xcodeProject.pbxCreateGroup(groupName, groupName);
-
-    // Add files
-    const files = ["ShareViewController.swift", `${targetName}.entitlements`];
-
-    files.forEach((fileName) => {
-      const filePath = `${targetName}/${fileName}`;
-      if (fileName.endsWith(".swift")) {
-        xcodeProject.addSourceFile(filePath, { target: target.uuid }, groupKey);
-      } else if (fileName.endsWith(".entitlements")) {
-        xcodeProject.addFile(filePath, groupKey);
-      }
-    });
-
-    // Add Info.plist
-    xcodeProject.addFile(`${targetName}/Info.plist`, groupKey);
-
-    // Link to main group
-    const mainGroup = xcodeProject.getFirstProject().firstProject.mainGroup;
-    xcodeProject.addToPbxGroup(groupKey, mainGroup);
 
     return mod;
   });
@@ -140,37 +96,17 @@ function withShareExtensionFiles(config) {
         infoPlistContent
       );
 
+      // Write a README for manual setup instructions
+      const readmeContent = getReadme();
+      fs.writeFileSync(path.join(extensionPath, "README.md"), readmeContent);
+
       return mod;
     },
   ]);
 }
 
-function withShareExtensionInfoPlist(config) {
-  return withInfoPlist(config, (mod) => {
-    // Add URL types for deep linking from share extension
-    if (!mod.modResults.CFBundleURLTypes) {
-      mod.modResults.CFBundleURLTypes = [];
-    }
-
-    const existingScheme = mod.modResults.CFBundleURLTypes.find((type) =>
-      type.CFBundleURLSchemes?.includes("vidly")
-    );
-
-    if (!existingScheme) {
-      mod.modResults.CFBundleURLTypes.push({
-        CFBundleURLSchemes: ["vidly"],
-        CFBundleURLName: config.ios?.bundleIdentifier || "com.vidly.app",
-      });
-    }
-
-    return mod;
-  });
-}
-
 function getShareViewControllerSwift() {
   return `import UIKit
-import Social
-import MobileCoreServices
 import UniformTypeIdentifiers
 
 class ShareViewController: UIViewController {
@@ -377,11 +313,7 @@ class ShareViewController: UIViewController {
     
     @objc private func downloadTapped() {
         guard let url = sharedUrl else { return }
-        
-        // Save to app group
         saveToAppGroup(url: url)
-        
-        // Open main app with the URL
         openMainApp(with: url)
     }
     
@@ -404,24 +336,16 @@ class ShareViewController: UIViewController {
             return
         }
         
+        // Use the openURL method via responder chain
         var responder: UIResponder? = self
-        while responder != nil {
-            if let application = responder as? UIApplication {
-                application.open(appUrl, options: [:]) { [weak self] _ in
-                    self?.completeRequest()
-                }
-                return
-            }
-            responder = responder?.next
-        }
-        
-        // Fallback: try using openURL selector
-        let selector = sel_registerName("openURL:")
-        responder = self
+        let selector = NSSelectorFromString("openURL:")
         while responder != nil {
             if responder!.responds(to: selector) {
                 responder!.perform(selector, with: appUrl)
-                break
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.completeRequest()
+                }
+                return
             }
             responder = responder?.next
         }
@@ -495,6 +419,60 @@ function getInfoPlist() {
     </dict>
 </dict>
 </plist>`;
+}
+
+function getReadme() {
+  return `# VidlyShareExtension Setup
+
+After running \`npx expo prebuild\`, follow these steps to add the Share Extension target in Xcode:
+
+## Setup Instructions
+
+1. Open \`ios/Vidly.xcworkspace\` in Xcode
+
+2. Add Share Extension Target:
+   - File > New > Target
+   - Select "Share Extension"
+   - Product Name: \`VidlyShareExtension\`
+   - Language: Swift
+   - Click "Finish"
+   - When asked to activate the scheme, click "Cancel"
+
+3. Replace Generated Files:
+   - Delete the auto-generated ShareViewController.swift
+   - Drag the files from this folder into the VidlyShareExtension group in Xcode:
+     - ShareViewController.swift
+     - VidlyShareExtension.entitlements
+   - For Info.plist, either replace the generated one or merge the NSExtension settings
+
+4. Configure App Groups:
+   - Select the VidlyShareExtension target
+   - Go to "Signing & Capabilities"
+   - Click "+ Capability" and add "App Groups"
+   - Add the group: \`group.com.vidly.app\`
+   
+5. Also add App Groups to the main Vidly target:
+   - Select the Vidly target
+   - Go to "Signing & Capabilities"
+   - Click "+ Capability" and add "App Groups"
+   - Add the same group: \`group.com.vidly.app\`
+
+6. Set Deployment Target:
+   - Select VidlyShareExtension target
+   - Set iOS Deployment Target to 15.1 or higher
+
+7. Build and Run:
+   - Select the Vidly scheme
+   - Build and run on device/simulator
+
+## Testing
+
+1. Open Safari and navigate to a YouTube video
+2. Tap the Share button
+3. Select "Save to Vidly" from the share sheet
+4. The extension UI should appear with the video URL
+5. Tap "Download Video" to open the main app
+`;
 }
 
 module.exports = withShareExtension;
