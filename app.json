@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "vidly",
+    "name": "Vidly",
     "slug": "vidly",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,17 +9,29 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.vidly.app",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Vidly needs access to save downloaded videos to your photo library.",
+        "NSPhotoLibraryAddUsageDescription": "Vidly needs access to save downloaded videos to your photo library."
+      }
     },
     "android": {
+      "package": "com.vidly.app",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#0A0A0B",
+        "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.ACCESS_MEDIA_LOCATION",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO"
+      ]
     },
     "web": {
       "output": "static",
@@ -33,16 +45,40 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#0A0A0B",
           "dark": {
-            "backgroundColor": "#000000"
+            "backgroundColor": "#0A0A0B"
           }
         }
-      ]
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Vidly needs access to save downloaded videos.",
+          "savePhotosPermission": "Vidly needs access to save downloaded videos.",
+          "isAccessMediaLocationEnabled": true,
+          "granularPermissions": ["READ_MEDIA_IMAGES", "READ_MEDIA_VIDEO"]
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#6366F1"
+        }
+      ],
+      "./plugins/with-share-extension.js",
+      "./plugins/with-android-share-intent.js"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5c9e4c8e-a5bd-40cc-875e-973f6f557e2e"
+      }
     }
   }
 }
